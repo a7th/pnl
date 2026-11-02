@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Axiom PnL Card Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            axiom: {
+              mint: '#2FE3AC',
+              red: '#FF0000',
+              bg: '#08090C',
+              panel: '#101216',
+              border: '#1E222B',
+              muted: '#7E8798'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #08090C; }
+    ::-webkit-scrollbar-thumb { background: #1E222B; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #2A2F3D; }
+  </style>
+</head>
+<body class="bg-axiom-bg text-slate-100 font-sans min-h-screen flex flex-col antialiased selection:bg-axiom-mint selection:text-black">
+
+  <!-- Header -->
+  <header class="border-b border-axiom-border bg-axiom-panel/90 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-7 h-7 flex items-center justify-center bg-black rounded border border-slate-800 p-1">
+          <!-- Axiom Logo SVG (triangle on top, trapezoid wider at bottom) -->
+          <svg viewBox="0 0 56 56" class="w-full h-full" fill="none">
+            <polygon points="28,2 48,30 8,30" fill="#FFFFFF"/>
+            <polygon points="4,38 52,38 46,54 10,54" fill="#FFFFFF"/>
+          </svg>
+        </div>
+        <span class="font-bold text-sm tracking-tight text-white">AXIOM <span class="font-normal text-slate-400">PnL Generator</span></span>
+      </div>
+      
+      <div class="flex items-center space-x-3">
+        <button id="btnResetDefault" class="text-xs font-semibold px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5">
+          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reset
+        </button>
+        <button id="btnExport" class="text-xs font-bold px-4 py-1.5 rounded bg-axiom-mint hover:bg-emerald-400 text-black transition flex items-center gap-2 shadow-sm">
+          <i id="exportIcon" data-lucide="download" class="w-4 h-4"></i> <span id="exportBtnLabel">Download Card</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Grid Layout -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    
+    <!-- Left Panel Controls -->
+    <div class="lg:col-span-5 bg-axiom-panel border border-axiom-border rounded-xl p-5 space-y-4 shadow-xl">
+      
+      <!-- Mode Tabs -->
+      <div class="grid grid-cols-2 gap-2 p-1 bg-black/60 rounded-lg border border-axiom-border">
+        <button id="tabSummary" class="py-1.5 text-xs font-bold rounded transition-all text-white bg-slate-800 shadow">
+          Summary Realized
+        </button>
+        <button id="tabCoin" class="py-1.5 text-xs font-bold rounded transition-all text-slate-400 hover:text-white">
+          Token / Coin PnL
+        </button>
+      </div>
+
+      <form id="pnlForm" class="space-y-4" onsubmit="return false;">
+
+        <!-- Header Options -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Header Style</label>
+            <select id="headerVariant" class="w-full bg-black border border-axiom-border rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-axiom-mint">
+              <option value="AXIOMPro">AXIOM Pro</option>
+              <option value="AXIOM">AXIOM</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Currency Unit</label>
+            <select id="currencyUnit" class="w-full bg-black border border-axiom-border rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-axiom-mint">
+              <option value="USD">USD ($)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- SUMMARY MODE INPUTS (DEFAULT) -->
+        <div id="sectionSummary" class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">Timeframe Label</label>
+              <input type="text" id="summaryTitle" value="30D Realized" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs text-white focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">Wallets Subtext</label>
+              <input type="text" id="summaryWallets" value="" placeholder="e.g. 4 wallets" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs text-white focus:outline-none">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">Total Bought / Invested</label>
+              <input type="number" id="numBoughtSummary" value="4770000" step="any" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs text-white font-mono">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">Total Sold / Position</label>
+              <input type="number" id="numSoldSummary" value="4970000" step="any" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs text-white font-mono">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">Badge PnL Text</label>
+              <input type="text" id="summaryPrimaryPnl" value="+$196K" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs font-bold text-white">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">PNL %</label>
+              <input type="text" id="summaryPnlPercent" value="+4.19%" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs text-white">
+            </div>
+          </div>
+        </div>
+
+        <!-- COIN MODE INPUTS -->
+        <div id="sectionCoin" class="space-y-3 hidden">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Token Name / Ticker</label>
+            <input type="text" id="coinSymbol" value="$AXIOM" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-axiom-mint">
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">Bought / Invested</label>
+              <input type="number" id="numBoughtCoin" value="11420" step="any" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs text-white font-mono">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">Position / Sold</label>
+              <input type="number" id="numPositionCoin" value="129330" step="any" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs text-white font-mono">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">Badge PnL Text</label>
+              <input type="text" id="badgePnlText" value="+$117.91K" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs font-bold text-white">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">PNL %</label>
+              <input type="text" id="coinRoi" value="+1032.22%" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs text-white">
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 pt-1">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Row 2 Label</label>
+            <select id="labelRow2" class="w-full bg-black border border-axiom-border rounded px-2.5 py-1.5 text-xs text-white">
+              <option value="Total Bought">Total Bought</option>
+              <option value="Bought">Bought</option>
+              <option value="Invested">Invested</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Row 3 Label</label>
+            <select id="labelRow3" class="w-full bg-black border border-axiom-border rounded px-2.5 py-1.5 text-xs text-white">
+              <option value="Total Sold">Total Sold</option>
+              <option value="Position">Position</option>
+            </select>
+          </div>
+        </div>
+
+        <hr class="border-axiom-border my-2">
+
+        <!-- User Info & Avatar Tag -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Username</label>
+            <input type="text" id="userHandle" value="@user" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs text-white focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Referral Subtext</label>
+            <input type="text" id="footerText" value="Save 10% off fees" class="w-full bg-black border border-axiom-border rounded px-3 py-1.5 text-xs text-white focus:outline-none">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Profile Picture</label>
+            <input type="file" id="avatarUpload" accept="image/*" class="hidden">
+            <button type="button" onclick="document.getElementById('avatarUpload').click()" class="w-full py-1.5 px-2 bg-black border border-axiom-border hover:border-slate-500 rounded text-xs font-medium text-slate-300 flex items-center justify-center gap-1.5 transition">
+              <i data-lucide="image" class="w-3.5 h-3.5 text-slate-400"></i> Upload Avatar
+            </button>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Avatar Tag Badge</label>
+            <select id="avatarTagSelect" class="w-full bg-black border border-axiom-border rounded px-2.5 py-1.5 text-xs text-white">
+              <option value="axiom">Axiom Logo (Default)</option>
+              <option value="none">None</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Badge Color Mode -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Badge Color Mode</label>
+            <select id="badgeColorMode" class="w-full bg-black border border-axiom-border rounded px-2.5 py-1.5 text-xs text-white">
+              <option value="auto">Auto (Win / Loss)</option>
+              <option value="custom">Custom Color</option>
+            </select>
+          </div>
+          <div id="customColorPickerContainer" class="hidden">
+            <label class="block text-xs font-medium text-slate-300 mb-1">Custom Badge Color</label>
+            <input type="color" id="badgeCustomColor" value="#2FE3AC" class="w-full h-8 bg-black border border-axiom-border rounded cursor-pointer p-0.5">
+          </div>
+        </div>
+
+        <hr class="border-axiom-border my-2">
+
+        <!-- Background Presets & Custom Upload -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="text-xs font-medium text-slate-300">Background Preset</label>
+            <span class="text-[11px] text-slate-400">Dim Overlay</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 mb-3">
+            <button type="button" data-preset="katana" class="preset-btn py-1.5 px-2 bg-slate-900 border border-axiom-mint text-axiom-mint rounded text-xs font-medium text-center transition">
+              Katana
+            </button>
+            <button type="button" data-preset="base" class="preset-btn py-1.5 px-2 bg-slate-900 border border-axiom-border text-slate-300 rounded text-xs font-medium text-center transition">
+              Base
+            </button>
+            <button type="button" data-preset="dark" class="preset-btn py-1.5 px-2 bg-slate-900 border border-axiom-border text-slate-300 rounded text-xs font-medium text-center transition">
+              Stealth Black
+            </button>
+          </div>
+
+          <!-- Background Dimming Slider -->
+          <div class="mb-3">
+            <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+              <span>Background Dimming</span>
+              <span id="dimValText">0%</span>
+            </div>
+            <input type="range" id="bgDimSlider" min="0" max="90" value="0" class="w-full accent-axiom-mint cursor-pointer">
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <input type="file" id="mediaUpload" accept="image/*,video/*" class="hidden">
+            <button type="button" onclick="document.getElementById('mediaUpload').click()" class="flex-1 py-1.5 px-3 bg-black border border-axiom-border hover:border-slate-500 rounded text-xs font-medium text-slate-300 flex items-center justify-center gap-2 transition">
+              <i data-lucide="upload" class="w-3.5 h-3.5 text-slate-400"></i> Custom Image or Video
+            </button>
+            <button type="button" id="btnRemoveMedia" class="py-1.5 px-3 bg-black border border-axiom-border text-xs font-medium text-slate-400 hover:text-red-400 rounded transition">
+              Clear
+            </button>
+          </div>
+        </div>
+
+      </form>
+    </div>
+
+    <!-- Right Canvas Live Preview -->
+    <div class="lg:col-span-7 flex flex-col items-center space-y-2 sticky top-20">
+      <div class="w-full flex items-center justify-between text-xs text-axiom-muted px-1">
+        <span class="flex items-center gap-1.5 font-medium">
+          <span class="w-2 h-2 rounded-full bg-axiom-mint inline-block"></span> Live Card Canvas
+        </span>
+        <span id="formatBadge" class="text-[11px] font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-300">PNG Output</span>
+      </div>
+
+      <div class="w-full bg-black rounded-xl p-2 sm:p-3 border border-axiom-border shadow-2xl flex items-center justify-center overflow-hidden">
+        <canvas id="pnlCanvas" width="1050" height="656" class="w-full h-auto rounded-lg shadow-2xl border border-slate-950"></canvas>
+      </div>
+
+      <video id="bgVideo" autoplay loop muted playsinline class="hidden"></video>
+    </div>
+
+  </main>
+
+  <script>
+    // App State
+    let cardMode = 'summary';
+    let presetTheme = 'katana';
+    let avatarImg = null;
+    let customBgImg = null;
+    let isVideoBg = false;
+
+    // Preset background images loaded from /images/
+    let bgKatana = null;
+    let bgBase = null;
+
+    const canvas = document.getElementById('pnlCanvas');
+    const ctx = canvas.getContext('2d');
+    const bgVideo = document.getElementById('bgVideo');
+
+    // ─── Load preset background images ───────────────────────────────────────
+    function loadPresetImages() {
+      bgKatana = new Image();
+      bgKatana.src = 'images/ax-katana.jpg';
+      bgKatana.onload = drawCard;
+
+      bgBase = new Image();
+      bgBase.src = 'images/base.png';
+      bgBase.onload = drawCard;
+    }
+
+    // ─── Default Avatar ───────────────────────────────────────────────────────
+    function createDefaultAvatar() {
+      const avCanvas = document.createElement('canvas');
+      avCanvas.width = 120;
+      avCanvas.height = 120;
+      const avCtx = avCanvas.getContext('2d');
+      
+      const grad = avCtx.createLinearGradient(0, 0, 120, 120);
+      grad.addColorStop(0, '#F59E0B');
+      grad.addColorStop(1, '#D97706');
+      avCtx.fillStyle = grad;
+      avCtx.fillRect(0, 0, 120, 120);
+
+      avCtx.fillStyle = '#78350F';
+      avCtx.beginPath();
+      avCtx.arc(60, 45, 22, 0, Math.PI * 2);
+      avCtx.fill();
+
+      avCtx.beginPath();
+      avCtx.arc(60, 115, 38, Math.PI, Math.PI * 2);
+      avCtx.fill();
+
+      const img = new Image();
+      img.src = avCanvas.toDataURL();
+      img.onload = () => {
+        avatarImg = img;
+        drawCard();
+      };
+    }
+
+    // ─── Currency Formatting ──────────────────────────────────────────────────
+    function formatVal(val) {
+      if (isNaN(val) || val === null) return '$0';
+      const absVal = Math.abs(val);
+      if (absVal >= 1000000) {
+        return '$' + (absVal / 1000000).toFixed(2).replace(/\.00$/, '') + 'M';
+      } else if (absVal >= 1000) {
+        return '$' + (absVal / 1000).toFixed(2).replace(/\.00$/, '') + 'K';
+      } else {
+        return '$' + absVal.toFixed(absVal < 10 ? 3 : 2).replace(/\.000$/, '').replace(/\.00$/, '');
+      }
+    }
+
+    // ─── Auto Math ────────────────────────────────────────────────────────────
+    function calculateCoinMath() {
+      const b = parseFloat(document.getElementById('numBoughtCoin').value) || 0;
+      const pos = parseFloat(document.getElementById('numPositionCoin').value) || 0;
+      const pnl = pos - b;
+      let pct = b > 0 ? (pnl / b) * 100 : 0;
+      const prefix = pnl >= 0 ? '+' : '-';
+      document.getElementById('badgePnlText').value = prefix + '$' + Math.abs(pnl).toFixed(2);
+      document.getElementById('coinRoi').value = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+    }
+
+    function calculateSummaryMath() {
+      const b = parseFloat(document.getElementById('numBoughtSummary').value) || 0;
+      const s = parseFloat(document.getElementById('numSoldSummary').value) || 0;
+      const pnl = s - b;
+      let pct = b > 0 ? (pnl / b) * 100 : 0;
+      document.getElementById('summaryPrimaryPnl').value = (pnl >= 0 ? '+' : '-') + formatVal(Math.abs(pnl));
+      document.getElementById('summaryPnlPercent').value = (pct >= 0 ? '+' : '') + pct.toFixed(2).replace(/\.00$/, '') + '%';
+    }
+
+    // ─── Page Load ────────────────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      loadPresetImages();
+      createDefaultAvatar();
+      setupEventListeners();
+      drawCard();
+
+      function videoRenderLoop() {
+        if (isVideoBg && !bgVideo.paused && !bgVideo.ended) {
+          drawCard();
+        }
+        requestAnimationFrame(videoRenderLoop);
+      }
+      videoRenderLoop();
+    });
+
+    function setupEventListeners() {
+      const tabCoin = document.getElementById('tabCoin');
+      const tabSummary = document.getElementById('tabSummary');
+      const sectionCoin = document.getElementById('sectionCoin');
+      const sectionSummary = document.getElementById('sectionSummary');
+
+      tabSummary.addEventListener('click', () => {
+        cardMode = 'summary';
+        tabSummary.className = "py-1.5 text-xs font-bold rounded transition-all text-white bg-slate-800 shadow";
+        tabCoin.className = "py-1.5 text-xs font-bold rounded transition-all text-slate-400 hover:text-white";
+        sectionSummary.classList.remove('hidden');
+        sectionCoin.classList.add('hidden');
+        document.getElementById('labelRow2').value = "Total Bought";
+        document.getElementById('labelRow3').value = "Total Sold";
+        drawCard();
+      });
+
+      tabCoin.addEventListener('click', () => {
+        cardMode = 'coin';
+        tabCoin.className = "py-1.5 text-xs font-bold rounded transition-all text-white bg-slate-800 shadow";
+        tabSummary.className = "py-1.5 text-xs font-bold rounded transition-all text-slate-400 hover:text-white";
+        sectionCoin.classList.remove('hidden');
+        sectionSummary.classList.add('hidden');
+        document.getElementById('labelRow2').value = "Invested";
+        document.getElementById('labelRow3').value = "Position";
+        drawCard();
+      });
+
+      document.getElementById('numBoughtCoin').addEventListener('input', () => { calculateCoinMath(); drawCard(); });
+      document.getElementById('numPositionCoin').addEventListener('input', () => { calculateCoinMath(); drawCard(); });
+      document.getElementById('numBoughtSummary').addEventListener('input', () => { calculateSummaryMath(); drawCard(); });
+      document.getElementById('numSoldSummary').addEventListener('input', () => { calculateSummaryMath(); drawCard(); });
+      document.getElementById('currencyUnit').addEventListener('change', () => {
+        if (cardMode === 'coin') calculateCoinMath(); else calculateSummaryMath();
+        drawCard();
+      });
+
+      document.getElementById('badgeColorMode').addEventListener('change', (e) => {
+        document.getElementById('customColorPickerContainer').classList.toggle('hidden', e.target.value !== 'custom');
+        drawCard();
+      });
+
+      document.getElementById('bgDimSlider').addEventListener('input', (e) => {
+        document.getElementById('dimValText').innerText = `${e.target.value}%`;
+        drawCard();
+      });
+
+      document.querySelectorAll('#pnlForm input, #pnlForm select').forEach(el => {
+        el.addEventListener('input', drawCard);
+        el.addEventListener('change', drawCard);
+      });
+
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.preset-btn').forEach(b => {
+            b.className = "preset-btn py-1.5 px-2 bg-slate-900 border border-axiom-border text-slate-300 rounded text-xs font-medium text-center transition";
+          });
+          btn.className = "preset-btn py-1.5 px-2 bg-slate-900 border border-axiom-mint text-axiom-mint rounded text-xs font-medium text-center transition";
+          presetTheme = btn.dataset.preset;
+          customBgImg = null;
+          isVideoBg = false;
+          document.getElementById('formatBadge').innerText = "PNG Output";
+          drawCard();
+        });
+      });
+
+      document.getElementById('mediaUpload').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          if (file.type.startsWith('video/')) {
+            bgVideo.src = URL.createObjectURL(file);
+            bgVideo.play();
+            isVideoBg = true;
+            customBgImg = null;
+            document.getElementById('formatBadge').innerText = "VIDEO Output (.webm)";
+          } else {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+              const img = new Image();
+              img.src = evt.target.result;
+              img.onload = () => { customBgImg = img; isVideoBg = false; document.getElementById('formatBadge').innerText = "PNG Output"; drawCard(); };
+            };
+            reader.readAsDataURL(file);
+          }
+        }
+      });
+
+      document.getElementById('btnRemoveMedia').addEventListener('click', () => {
+        customBgImg = null; isVideoBg = false;
+        bgVideo.pause(); bgVideo.src = '';
+        document.getElementById('formatBadge').innerText = "PNG Output";
+        drawCard();
+      });
+
+      document.getElementById('avatarUpload').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            const img = new Image();
+            img.src = evt.target.result;
+            img.onload = () => { avatarImg = img; drawCard(); };
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+
+      document.getElementById('btnExport').addEventListener('click', exportMedia);
+
+      document.getElementById('btnResetDefault').addEventListener('click', () => {
+        document.getElementById('pnlForm').reset();
+        cardMode = 'summary';
+        presetTheme = 'katana';
+        customBgImg = null;
+        isVideoBg = false;
+        document.getElementById('customColorPickerContainer').classList.add('hidden');
+        document.getElementById('dimValText').innerText = "0%";
+        createDefaultAvatar();
+        tabSummary.click();
+        drawCard();
+      });
+    }
+
+    // ─── Draw Axiom Logo (triangle on top, trapezoid wider at bottom) ─────────
+    // Scale: draws into a bounding box at (x, y) with given size
+    function drawAxiomLogo(x, y, size) {
+      // size ≈ the total height of the logo
+      // Triangle: apex at top-center, base at ~42% height
+      const triH = size * 0.42;
+      const triHalfW = size * 0.30;
+      const gap = size * 0.10;
+      // Trapezoid: sits below the gap, bottom is wider than top
+      const trapTop = triH + gap;
+      const trapH = size * 0.30;
+      const trapTopHalfW = size * 0.24;
+      const trapBotHalfW = size * 0.36;
+
+      ctx.fillStyle = '#FFFFFF';
+
+      // Top triangle (pointing up)
+      ctx.beginPath();
+      ctx.moveTo(x, y);                         // apex
+      ctx.lineTo(x - triHalfW, y + triH);       // bottom-left
+      ctx.lineTo(x + triHalfW, y + triH);       // bottom-right
+      ctx.closePath();
+      ctx.fill();
+
+      // Bottom trapezoid (wider at bottom)
+      ctx.beginPath();
+      ctx.moveTo(x - trapTopHalfW, y + trapTop);              // top-left
+      ctx.lineTo(x + trapTopHalfW, y + trapTop);              // top-right
+      ctx.lineTo(x + trapBotHalfW, y + trapTop + trapH);      // bottom-right
+      ctx.lineTo(x - trapBotHalfW, y + trapTop + trapH);      // bottom-left
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // ─── MAIN CANVAS RENDERER ─────────────────────────────────────────────────
+    function drawCard() {
+      const W = canvas.width;   // 1050
+      const H = canvas.height;  // 656
+
+      ctx.fillStyle = '#08090C';
+      ctx.fillRect(0, 0, W, H);
+
+      // ── 1. BACKGROUND ──────────────────────────────────────────────────────
+      function drawBgImage(img) {
+        if (!img) return;
+        const scale = Math.max(W / img.width, H / img.height);
+        const dx = (W - img.width * scale) / 2;
+        const dy = (H - img.height * scale) / 2;
+        ctx.drawImage(img, dx, dy, img.width * scale, img.height * scale);
+      }
+
+      if (customBgImg) {
+        drawBgImage(customBgImg);
+      } else if (isVideoBg && bgVideo.readyState >= 2) {
+        const scale = Math.max(W / bgVideo.videoWidth, H / bgVideo.videoHeight);
+        const dx = (W - bgVideo.videoWidth * scale) / 2;
+        const dy = (H - bgVideo.videoHeight * scale) / 2;
+        ctx.drawImage(bgVideo, dx, dy, bgVideo.videoWidth * scale, bgVideo.videoHeight * scale);
+      } else if (presetTheme === 'katana' && bgKatana) {
+        drawBgImage(bgKatana);
+      } else if (presetTheme === 'base' && bgBase) {
+        drawBgImage(bgBase);
+      } else {
+        // Stealth Black or image not loaded yet
+        ctx.fillStyle = '#06070A';
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      // ── 2. DIM OVERLAY ─────────────────────────────────────────────────────
+      const dimOpacity = (parseInt(document.getElementById('bgDimSlider').value) || 0) / 100;
+      if (dimOpacity > 0) {
+        ctx.fillStyle = `rgba(0,0,0,${dimOpacity})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      // ── 3. TOP-LEFT AXIOM LOGO ─────────────────────────────────────────────
+      // Real card: logo apex at ~(52, 32), total logo height ~52px on a 656px card
+      drawAxiomLogo(80, 28, 52);
+
+      // ── 4. TOP-RIGHT "AXIOM Pro" BRANDING ──────────────────────────────────
+      // Real card: right edge at ~1020px, baseline at ~80px
+      // "AXIOM" = bold heavy, "Pro" = thin/light, optionally italic
+      // Measured from real card: AXIOM ~48px bold, Pro ~36px light
+      const headerVariant = document.getElementById('headerVariant').value;
+      const rightEdge = W - 38;
+
+      ctx.textBaseline = 'alphabetic';
+      ctx.textAlign = 'right';
+
+      if (headerVariant === 'AXIOMPro') {
+        // Measure "Pro" first so we can right-align the combined string
+        ctx.font = '300 italic 36px Inter, sans-serif';
+        const proW = ctx.measureText('Pro').width;
+        const gap = 4;
+
+        // Draw "AXIOM" so its right edge lands at (rightEdge - proW - gap)
+        ctx.font = '700 48px Inter, sans-serif';
+        ctx.fillStyle = '#FFFFFF';
+        const axiomW = ctx.measureText('AXIOM').width;
+        ctx.fillText('AXIOM', rightEdge - proW - gap, 76);
+
+        // Draw "Pro" right-aligned to rightEdge
+        ctx.font = '300 italic 36px Inter, sans-serif';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText('Pro', rightEdge, 76);
+      } else {
+        ctx.font = '700 48px Inter, sans-serif';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText('AXIOM', rightEdge, 76);
+      }
+      ctx.textAlign = 'left';
+
+      // ── 5. TITLE & PRIMARY PNL BADGE ───────────────────────────────────────
+      const leftX = 52;
+      let primaryPnl = '';
+
+      if (cardMode === 'coin') {
+        const symbol = document.getElementById('coinSymbol').value || '$AXIOM';
+        ctx.font = '600 52px Inter, sans-serif';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(symbol, leftX, 178);
+        primaryPnl = document.getElementById('badgePnlText').value || '+$117.91K';
+      } else {
+        const titleText = document.getElementById('summaryTitle').value || '30D Realized';
+        const walletText = document.getElementById('summaryWallets').value || '';
+        ctx.font = '400 52px Inter, sans-serif';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(titleText, leftX, 178);
+        if (walletText.trim().length > 0) {
+          const tW = ctx.measureText(titleText).width;
+          ctx.font = '400 34px Inter, sans-serif';
+          ctx.fillStyle = '#94A3B8';
+          ctx.fillText(walletText, leftX + tW + 18, 178);
+        }
+        primaryPnl = document.getElementById('summaryPrimaryPnl').value || '+$196K';
+      }
+
+      // ── BADGE COLOR ──────────────────────────────────────────────────────────
+      let badgeBg = '#2FE3AC';
+      let badgeText = '#000000';
+      const colorMode = document.getElementById('badgeColorMode').value;
+      if (colorMode === 'custom') {
+        badgeBg = document.getElementById('badgeCustomColor').value;
+        badgeText = '#000000';
+      } else {
+        if (primaryPnl.includes('-')) {
+          badgeBg = '#FF0000';
+          badgeText = '#FFFFFF';
+        } else if (primaryPnl === '$0' || primaryPnl === '0') {
+          badgeBg = '#F0F4F8';
+          badgeText = '#000000';
+        } else {
+          badgeBg = '#2FE3AC';
+          badgeText = '#000000';
+        }
+      }
+
+      // ── BADGE RECT ────────────────────────────────────────────────────────────
+      ctx.font = '800 72px Inter, sans-serif';
+      const textW = ctx.measureText(primaryPnl).width;
+      const badgePadX = 26;
+      const badgeW = textW + badgePadX * 2;
+      const badgeH = 98;
+      const badgeX = leftX;
+      const badgeY = 200;
+
+      ctx.fillStyle = badgeBg;
+      ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+
+      ctx.fillStyle = badgeText;
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(primaryPnl, badgeX + badgePadX, badgeY + 74);
+
+      // ── 6. METRICS TABLE ────────────────────────────────────────────────────
+      const gridY = 374;
+      const rowH = 52;
+      // col2X aligned to match real card — values start at ~370px (on 1050px wide card)
+      const col2X = 360;
+
+      const labelRow2 = document.getElementById('labelRow2').value;
+      const labelRow3 = document.getElementById('labelRow3').value;
+
+      ctx.font = '400 34px Inter, sans-serif';
+      ctx.fillStyle = '#E2E8F0';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText('PNL', leftX, gridY);
+      ctx.fillText(labelRow2, leftX, gridY + rowH);
+      ctx.fillText(labelRow3, leftX, gridY + rowH * 2);
+
+      // Row values
+      let roiStr = cardMode === 'coin'
+        ? (document.getElementById('coinRoi').value || '+0%')
+        : (document.getElementById('summaryPnlPercent').value || '+0%');
+      let boughtRaw = cardMode === 'coin'
+        ? parseFloat(document.getElementById('numBoughtCoin').value)
+        : parseFloat(document.getElementById('numBoughtSummary').value);
+      let posRaw = cardMode === 'coin'
+        ? parseFloat(document.getElementById('numPositionCoin').value)
+        : parseFloat(document.getElementById('numSoldSummary').value);
+
+      const boughtValStr = formatVal(boughtRaw);
+      const posValStr = formatVal(posRaw);
+
+      // PNL % colored
+      ctx.font = '500 34px Inter, sans-serif';
+      ctx.fillStyle = roiStr.includes('-') ? '#FF4444' : '#2FE3AC';
+      ctx.fillText(roiStr, col2X, gridY);
+
+      // Value rows
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '400 34px Inter, sans-serif';
+      ctx.fillText(boughtValStr, col2X, gridY + rowH);
+      ctx.fillText(posValStr, col2X, gridY + rowH * 2);
+
+      // ── 7. FOOTER — Avatar + Username + Globe + Subtext ────────────────────
+      // Real card: avatar is ~60px square, starts at Y≈545
+      const avSize = 60;
+      const avX = leftX;
+      const avY = 548;
+      const avR = 10; // corner radius
+
+      if (avatarImg) {
+        // Draw rounded-rect avatar — NO border/stroke
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(avX + avR, avY);
+        ctx.arcTo(avX + avSize, avY, avX + avSize, avY + avSize, avR);
+        ctx.arcTo(avX + avSize, avY + avSize, avX, avY + avSize, avR);
+        ctx.arcTo(avX, avY + avSize, avX, avY, avR);
+        ctx.arcTo(avX, avY, avX + avSize, avY, avR);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(avatarImg, avX, avY, avSize, avSize);
+        ctx.restore();
+
+        // Avatar tag badge: small Axiom logo (white triangle + trapezoid) on dark chip
+        if (document.getElementById('avatarTagSelect').value === 'axiom') {
+          const chipSize = 18;
+          const chipX = avX - chipSize * 0.4;
+          const chipY = avY - chipSize * 0.4;
+
+          // Dark rounded chip background
+          ctx.save();
+          ctx.fillStyle = 'rgba(8, 9, 12, 0.85)';
+          const cr = 4;
+          ctx.beginPath();
+          ctx.moveTo(chipX + cr, chipY);
+          ctx.arcTo(chipX + chipSize, chipY, chipX + chipSize, chipY + chipSize, cr);
+          ctx.arcTo(chipX + chipSize, chipY + chipSize, chipX, chipY + chipSize, cr);
+          ctx.arcTo(chipX, chipY + chipSize, chipX, chipY, cr);
+          ctx.arcTo(chipX, chipY, chipX + chipSize, chipY, cr);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // Mini Axiom logo centered in chip
+          drawAxiomLogo(chipX + chipSize / 2, chipY + chipSize * 0.12, chipSize * 0.80);
+        }
+      }
+
+      // Username — bold, vertically centered with avatar
+      const usernameX = avX + avSize + 16;
+      const usernameCY = avY + avSize / 2;
+      const username = document.getElementById('userHandle').value || '@user';
+      ctx.font = '700 38px Inter, sans-serif';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(username, usernameX, usernameCY);
+
+      // Footer line: globe icon + "axiom.trade  Save 10% off fees"
+      const footerLineY = avY + avSize + 16;
+      const globeX = leftX + 10;
+      const globeY = footerLineY + 10;
+      const globeR = 9;
+
+      ctx.save();
+      ctx.strokeStyle = '#94A3B8';
+      ctx.lineWidth = 1.8;
+      // Outer circle
+      ctx.beginPath();
+      ctx.arc(globeX, globeY, globeR, 0, Math.PI * 2);
+      ctx.stroke();
+      // Inner vertical ellipse
+      ctx.beginPath();
+      ctx.ellipse(globeX, globeY, 3.5, globeR, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // Horizontal equator
+      ctx.beginPath();
+      ctx.moveTo(globeX - globeR, globeY);
+      ctx.lineTo(globeX + globeR, globeY);
+      ctx.stroke();
+      ctx.restore();
+
+      const footerSub = 'axiom.trade   ' + (document.getElementById('footerText').value || 'Save 10% off fees');
+      ctx.font = '400 22px Inter, sans-serif';
+      ctx.fillStyle = '#94A3B8';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(footerSub, globeX + globeR + 7, globeY);
+
+      ctx.textBaseline = 'alphabetic';
+    }
+
+    // ─── EXPORT ───────────────────────────────────────────────────────────────
+    function exportMedia() {
+      if (isVideoBg) {
+        exportVideoWithAudio();
+      } else {
+        exportPNG();
+      }
+    }
+
+    function exportPNG() {
+      drawCard();
+      const link = document.createElement('a');
+      link.download = `axiom-pnl-${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png', 1.0);
+      link.click();
+    }
+
+    function exportVideoWithAudio() {
+      const btn = document.getElementById('btnExport');
+      const label = document.getElementById('exportBtnLabel');
+      label.innerText = 'Recording Video...';
+      btn.disabled = true;
+
+      const canvasStream = canvas.captureStream(30);
+      const combinedTracks = [...canvasStream.getVideoTracks()];
+
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (bgVideo.src || bgVideo.srcObject) {
+          const source = audioCtx.createMediaElementSource(bgVideo);
+          const dest = audioCtx.createMediaStreamDestination();
+          source.connect(dest);
+          source.connect(audioCtx.destination);
+          combinedTracks.push(...dest.stream.getAudioTracks());
+        }
+      } catch (err) { /* fallback without audio */ }
+
+      const recorder = new MediaRecorder(new MediaStream(combinedTracks), { mimeType: 'video/webm' });
+      const chunks = [];
+      recorder.ondataavailable = e => chunks.push(e.data);
+      recorder.onstop = () => {
+        const url = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+        const a = document.createElement('a');
+        a.href = url; a.download = `axiom-pnl-video-${Date.now()}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+        label.innerText = 'Download Card';
+        btn.disabled = false;
+      };
+
+      recorder.start();
+      const recDuration = bgVideo.duration && !isNaN(bgVideo.duration) ? Math.min(bgVideo.duration * 1000, 10000) : 5000;
+      setTimeout(() => recorder.stop(), recDuration);
+    }
+  </script>
+</body>
+</html>
