@@ -47,8 +47,8 @@
         <div class="w-7 h-7 flex items-center justify-center bg-black rounded border border-slate-800 p-1">
           <!-- Axiom Logo SVG (triangle on top, trapezoid wider at bottom) -->
           <svg viewBox="0 0 56 56" class="w-full h-full" fill="none">
-            <polygon points="28,2 39,27 17,27" fill="#FFFFFF"/>
-            <polygon points="15,32 41,32 50,52 6,52" fill="#FFFFFF"/>
+            <polygon points="28,6 39,25 17,25" fill="#FFFFFF"/>
+            <polygon points="11,32 45,32 54,50 2,50" fill="#FFFFFF"/>
           </svg>
         </div>
         <span class="font-bold text-sm tracking-tight text-white">AXIOM <span class="font-normal text-slate-400">PnL Generator</span></span>
@@ -514,6 +514,8 @@
         presetTheme = 'katana';
         customBgImg = null;
         isVideoBg = false;
+        bgVideo.pause();
+        bgVideo.src = '';
         document.getElementById('customColorPickerContainer').classList.add('hidden');
         document.getElementById('dimValText').innerText = "0%";
         createDefaultAvatar();
@@ -522,36 +524,36 @@
       });
     }
 
-    // ─── Draw Axiom Logo (triangle with horizontal slit, unified triangular silhouette) ──
+    // ─── Draw Axiom Logo (triangle on top, wider trapezoid at bottom) ─────────
     // x, y = apex position; size = total height of the logo
     function drawAxiomLogo(x, y, size) {
       const totalH = size;
-      const baseHalfW = size * 0.40; // half-width at the very bottom
+      const triH = totalH * 0.44;
+      const triHalfW = totalH * 0.26;
 
-      // Both sections follow the same triangular slope:
-      // at height h from apex, halfWidth = baseHalfW * (h / totalH)
-      const gapTop = totalH * 0.50;   // where the gap starts
-      const gapBot = totalH * 0.62;   // where the gap ends
+      const gapTop = triH;
+      const gapH = totalH * 0.16;
+      const trapTopY = gapTop + gapH;
 
-      const wGapTop = baseHalfW * (gapTop / totalH);
-      const wGapBot = baseHalfW * (gapBot / totalH);
+      const trapTopHalfW = totalH * 0.39;
+      const trapBotHalfW = totalH * 0.59;
 
       ctx.fillStyle = '#FFFFFF';
 
-      // Top triangle section (apex to gap)
+      // Top triangle section
       ctx.beginPath();
-      ctx.moveTo(x, y);                            // apex
-      ctx.lineTo(x + wGapTop, y + gapTop);         // bottom-right
-      ctx.lineTo(x - wGapTop, y + gapTop);         // bottom-left
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + triHalfW, y + triH);
+      ctx.lineTo(x - triHalfW, y + triH);
       ctx.closePath();
       ctx.fill();
 
-      // Bottom trapezoid section (gap to base, same slope)
+      // Bottom trapezoid section (wider at both top and bottom)
       ctx.beginPath();
-      ctx.moveTo(x - wGapBot, y + gapBot);         // top-left
-      ctx.lineTo(x + wGapBot, y + gapBot);         // top-right
-      ctx.lineTo(x + baseHalfW, y + totalH);       // bottom-right
-      ctx.lineTo(x - baseHalfW, y + totalH);       // bottom-left
+      ctx.moveTo(x - trapTopHalfW, y + trapTopY);
+      ctx.lineTo(x + trapTopHalfW, y + trapTopY);
+      ctx.lineTo(x + trapBotHalfW, y + totalH);
+      ctx.lineTo(x - trapBotHalfW, y + totalH);
       ctx.closePath();
       ctx.fill();
     }
@@ -598,8 +600,8 @@
       }
 
       // ── 3. TOP-LEFT AXIOM LOGO ─────────────────────────────────────────────
-      // Real card: logo apex at ~(52, 32), total logo height ~52px on a 656px card
-      drawAxiomLogo(80, 28, 52);
+      // Real card: logo bottom aligned with left margin (x=52), height ~48px
+      drawAxiomLogo(81, 30, 48);
 
       // ── 4. TOP-RIGHT "AXIOM Pro" BRANDING ──────────────────────────────────
       // Real card: right edge at ~1020px, baseline at ~80px
@@ -816,6 +818,34 @@
       ctx.textBaseline = 'alphabetic';
     }
 
+    // ─── Web Audio Capture for Video Export ──────────────────────────────────
+    let audioCtx = null;
+    let mediaSourceNode = null;
+    let mediaDestNode = null;
+
+    function getAudioStreamTrack() {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (!mediaSourceNode) {
+          mediaSourceNode = audioCtx.createMediaElementSource(bgVideo);
+          mediaDestNode = audioCtx.createMediaStreamDestination();
+          mediaSourceNode.connect(mediaDestNode);
+          // mediaSourceNode is intentionally NOT connected to audioCtx.destination.
+          // This keeps background playback in the preview silent, while sending
+          // unmuted sound directly into the recording track.
+        }
+        const tracks = mediaDestNode.stream.getAudioTracks();
+        if (tracks && tracks.length > 0) {
+          return tracks[0];
+        }
+      } catch (err) {
+        console.warn('Audio capture setup warning:', err);
+      }
+      return null;
+    }
+
     // ─── EXPORT ───────────────────────────────────────────────────────────────
     function exportMedia() {
       if (isVideoBg) {
@@ -833,42 +863,124 @@
       link.click();
     }
 
-    function exportVideoWithAudio() {
+    async function exportVideoWithAudio() {
       const btn = document.getElementById('btnExport');
       const label = document.getElementById('exportBtnLabel');
-      label.innerText = 'Recording Video...';
       btn.disabled = true;
 
-      const canvasStream = canvas.captureStream(30);
-      const combinedTracks = [...canvasStream.getVideoTracks()];
-
       try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (bgVideo.src || bgVideo.srcObject) {
-          const source = audioCtx.createMediaElementSource(bgVideo);
-          const dest = audioCtx.createMediaStreamDestination();
-          source.connect(dest);
-          source.connect(audioCtx.destination);
-          combinedTracks.push(...dest.stream.getAudioTracks());
+        // 1. Resume AudioContext upon user gesture
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
-      } catch (err) { /* fallback without audio */ }
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
 
-      const recorder = new MediaRecorder(new MediaStream(combinedTracks), { mimeType: 'video/webm' });
-      const chunks = [];
-      recorder.ondataavailable = e => chunks.push(e.data);
-      recorder.onstop = () => {
-        const url = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
-        const a = document.createElement('a');
-        a.href = url; a.download = `axiom-pnl-video-${Date.now()}.webm`;
-        a.click();
-        URL.revokeObjectURL(url);
+        // 2. Pause and rewind video to frame 0
+        bgVideo.pause();
+        bgVideo.currentTime = 0;
+        await new Promise(resolve => {
+          const onSeeked = () => {
+            bgVideo.removeEventListener('seeked', onSeeked);
+            resolve();
+          };
+          bgVideo.addEventListener('seeked', onSeeked);
+          setTimeout(resolve, 350); // fallback timeout
+        });
+
+        // 3. Unmute video for Web Audio capture (won't play to speakers because
+        //    mediaSourceNode is only connected to mediaDestNode)
+        bgVideo.muted = false;
+        bgVideo.volume = 1.0;
+
+        // 4. Capture canvas video track + Web Audio stream track
+        const canvasStream = canvas.captureStream(30);
+        const combinedTracks = [...canvasStream.getVideoTracks()];
+        const audioTrack = getAudioStreamTrack();
+        if (audioTrack) {
+          combinedTracks.push(audioTrack);
+        }
+
+        // 5. Select supported MIME type
+        const mimeTypes = [
+          'video/webm;codecs=vp9,opus',
+          'video/webm;codecs=vp8,opus',
+          'video/webm'
+        ];
+        let chosenMime = '';
+        for (const m of mimeTypes) {
+          if (MediaRecorder.isTypeSupported(m)) {
+            chosenMime = m;
+            break;
+          }
+        }
+
+        const recorder = new MediaRecorder(
+          new MediaStream(combinedTracks),
+          chosenMime ? { mimeType: chosenMime } : undefined
+        );
+        const chunks = [];
+        recorder.ondataavailable = e => {
+          if (e.data && e.data.size > 0) chunks.push(e.data);
+        };
+
+        const totalSec = bgVideo.duration && !isNaN(bgVideo.duration) && bgVideo.duration > 0
+          ? bgVideo.duration
+          : 10;
+
+        label.innerText = `Recording (0s / ${Math.round(totalSec)}s)...`;
+
+        const progressInterval = setInterval(() => {
+          const cur = Math.min(Math.floor(bgVideo.currentTime), Math.floor(totalSec));
+          label.innerText = `Recording (${cur}s / ${Math.round(totalSec)}s)...`;
+        }, 300);
+
+        let finished = false;
+        const cleanupAndFinish = () => {
+          if (finished) return;
+          finished = true;
+          clearInterval(progressInterval);
+          clearTimeout(safetyTimeout);
+          bgVideo.removeEventListener('ended', cleanupAndFinish);
+          if (recorder.state === 'recording') {
+            recorder.stop();
+          }
+        };
+
+        bgVideo.loop = false;
+        bgVideo.addEventListener('ended', cleanupAndFinish);
+        // Safety buffer: duration + 1.0s in case ended event is delayed
+        const safetyTimeout = setTimeout(cleanupAndFinish, (totalSec + 1.0) * 1000);
+
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: chosenMime || 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `axiom-pnl-video-${Date.now()}.webm`;
+          a.click();
+          URL.revokeObjectURL(url);
+
+          // Restore normal muted looping preview
+          bgVideo.muted = true;
+          bgVideo.loop = true;
+          bgVideo.play();
+          label.innerText = 'Download Card';
+          btn.disabled = false;
+        };
+
+        recorder.start(200);
+        await bgVideo.play();
+      } catch (err) {
+        console.error('Video recording error:', err);
+        bgVideo.muted = true;
+        bgVideo.loop = true;
+        bgVideo.play();
         label.innerText = 'Download Card';
         btn.disabled = false;
-      };
-
-      recorder.start();
-      const recDuration = bgVideo.duration && !isNaN(bgVideo.duration) ? Math.min(bgVideo.duration * 1000, 10000) : 5000;
-      setTimeout(() => recorder.stop(), recDuration);
+        alert('Video recording failed. Please check browser permissions or console.');
+      }
     }
   </script>
 </body>
