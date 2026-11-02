@@ -45,10 +45,10 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
       <div class="flex items-center space-x-3">
         <div class="w-7 h-7 flex items-center justify-center bg-black rounded border border-slate-800 p-1">
-          <!-- Axiom Logo SVG (triangle on top, trapezoid wider at bottom) -->
+          <!-- Axiom Logo SVG (triangle with inline horizontal slit) -->
           <svg viewBox="0 0 56 56" class="w-full h-full" fill="none">
-            <polygon points="28,6 39,25 17,25" fill="#FFFFFF"/>
-            <polygon points="11,32 45,32 54,50 2,50" fill="#FFFFFF"/>
+            <polygon points="28,6 39.2,25.4 16.8,25.4" fill="#FFFFFF"/>
+            <polygon points="13.5,31.1 42.5,31.1 53.5,50 2.5,50" fill="#FFFFFF"/>
           </svg>
         </div>
         <span class="font-bold text-sm tracking-tight text-white">AXIOM <span class="font-normal text-slate-400">PnL Generator</span></span>
@@ -524,36 +524,35 @@
       });
     }
 
-    // ─── Draw Axiom Logo (triangle on top, wider trapezoid at bottom) ─────────
+    // ─── Draw Axiom Logo (triangle with inline horizontal slit) ───────────────
     // x, y = apex position; size = total height of the logo
     function drawAxiomLogo(x, y, size) {
       const totalH = size;
-      const triH = totalH * 0.44;
-      const triHalfW = totalH * 0.26;
+      const baseHalfW = totalH * 0.58;
 
-      const gapTop = triH;
-      const gapH = totalH * 0.16;
-      const trapTopY = gapTop + gapH;
+      const gapTop = totalH * 0.44;
+      const gapBot = totalH * 0.57; // 0.13 gap height
 
-      const trapTopHalfW = totalH * 0.39;
-      const trapBotHalfW = totalH * 0.59;
+      // Collinear widths: at any height h from apex, halfWidth = baseHalfW * (h / totalH)
+      const wTop = baseHalfW * (gapTop / totalH);
+      const wBot = baseHalfW * (gapBot / totalH);
 
       ctx.fillStyle = '#FFFFFF';
 
       // Top triangle section
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.lineTo(x + triHalfW, y + triH);
-      ctx.lineTo(x - triHalfW, y + triH);
+      ctx.lineTo(x + wTop, y + gapTop);
+      ctx.lineTo(x - wTop, y + gapTop);
       ctx.closePath();
       ctx.fill();
 
-      // Bottom trapezoid section (wider at both top and bottom)
+      // Bottom trapezoid section (collinear with top triangle)
       ctx.beginPath();
-      ctx.moveTo(x - trapTopHalfW, y + trapTopY);
-      ctx.lineTo(x + trapTopHalfW, y + trapTopY);
-      ctx.lineTo(x + trapBotHalfW, y + totalH);
-      ctx.lineTo(x - trapBotHalfW, y + totalH);
+      ctx.moveTo(x - wBot, y + gapBot);
+      ctx.lineTo(x + wBot, y + gapBot);
+      ctx.lineTo(x + baseHalfW, y + totalH);
+      ctx.lineTo(x - baseHalfW, y + totalH);
       ctx.closePath();
       ctx.fill();
     }
@@ -601,12 +600,11 @@
 
       // ── 3. TOP-LEFT AXIOM LOGO ─────────────────────────────────────────────
       // Real card: logo bottom aligned with left margin (x=52), height ~48px
-      drawAxiomLogo(81, 30, 48);
+      drawAxiomLogo(80, 30, 48);
 
       // ── 4. TOP-RIGHT "AXIOM Pro" BRANDING ──────────────────────────────────
-      // Real card: right edge at ~1020px, baseline at ~80px
-      // "AXIOM" = bold heavy, "Pro" = thin/light, optionally italic
-      // Measured from real card: AXIOM ~48px bold, Pro ~36px light
+      // Real card: right edge at ~1020px, baseline at ~72px
+      // "AXIOM" = medium sleek weight, "Pro" = light upright
       const headerVariant = document.getElementById('headerVariant').value;
       const rightEdge = W - 38;
 
@@ -615,24 +613,24 @@
 
       if (headerVariant === 'AXIOMPro') {
         // Measure "Pro" first so we can right-align the combined string
-        ctx.font = '300 36px Inter, sans-serif';
+        ctx.font = '300 30px Inter, sans-serif';
         const proW = ctx.measureText('Pro').width;
         const gap = 4;
 
         // Draw "AXIOM" so its right edge lands at (rightEdge - proW - gap)
-        ctx.font = '600 48px Inter, sans-serif';
+        ctx.font = '500 40px Inter, sans-serif';
         ctx.fillStyle = '#FFFFFF';
         const axiomW = ctx.measureText('AXIOM').width;
-        ctx.fillText('AXIOM', rightEdge - proW - gap, 76);
+        ctx.fillText('AXIOM', rightEdge - proW - gap, 72);
 
         // Draw "Pro" right-aligned to rightEdge
-        ctx.font = '300 36px Inter, sans-serif';
+        ctx.font = '300 30px Inter, sans-serif';
         ctx.fillStyle = '#FFFFFF';
-        ctx.fillText('Pro', rightEdge, 76);
+        ctx.fillText('Pro', rightEdge, 72);
       } else {
-        ctx.font = '600 48px Inter, sans-serif';
+        ctx.font = '500 40px Inter, sans-serif';
         ctx.fillStyle = '#FFFFFF';
-        ctx.fillText('AXIOM', rightEdge, 76);
+        ctx.fillText('AXIOM', rightEdge, 72);
       }
       ctx.textAlign = 'left';
 
@@ -684,31 +682,31 @@
       }
 
       // ── BADGE RECT ────────────────────────────────────────────────────────────
-      ctx.font = '800 72px Inter, sans-serif';
+      ctx.font = '700 64px Inter, sans-serif';
       const textW = ctx.measureText(primaryPnl).width;
-      const badgePadX = 26;
+      const badgePadX = 20;
       const badgeW = textW + badgePadX * 2;
-      const badgeH = 98;
+      const badgeH = 88;
       const badgeX = leftX;
-      const badgeY = 200;
+      const badgeY = 204;
 
       ctx.fillStyle = badgeBg;
       ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
 
       ctx.fillStyle = badgeText;
       ctx.textBaseline = 'alphabetic';
-      ctx.fillText(primaryPnl, badgeX + badgePadX, badgeY + 74);
+      ctx.fillText(primaryPnl, badgeX + badgePadX, badgeY + 66);
 
       // ── 6. METRICS TABLE ────────────────────────────────────────────────────
-      const gridY = 374;
-      const rowH = 52;
-      // col2X aligned to match real card — values start at ~370px (on 1050px wide card)
-      const col2X = 360;
+      const gridY = 368;
+      const rowH = 46;
+      // col2X aligned to match real card
+      const col2X = 330;
 
       const labelRow2 = document.getElementById('labelRow2').value;
       const labelRow3 = document.getElementById('labelRow3').value;
 
-      ctx.font = '600 34px Inter, sans-serif';
+      ctx.font = '500 29px Inter, sans-serif';
       ctx.fillStyle = '#FFFFFF';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText('PNL', leftX, gridY);
@@ -730,13 +728,13 @@
       const posValStr = formatVal(posRaw);
 
       // PNL % colored
-      ctx.font = '500 34px Inter, sans-serif';
+      ctx.font = '500 29px Inter, sans-serif';
       ctx.fillStyle = roiStr.includes('-') ? '#FF4444' : '#2FE3AC';
       ctx.fillText(roiStr, col2X, gridY);
 
       // Value rows
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = '400 34px Inter, sans-serif';
+      ctx.font = '400 29px Inter, sans-serif';
       ctx.fillText(boughtValStr, col2X, gridY + rowH);
       ctx.fillText(posValStr, col2X, gridY + rowH * 2);
 
