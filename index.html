@@ -848,6 +848,138 @@
       return null;
     }
 
+    // ─── Patch MP4 Duration in ISOBMFF Atoms ──────────────────────────────────
+    // MediaRecorder writes fragmented MP4 (fmp4) where mvhd, tkhd, and mdhd
+    // duration fields are 0 or unfinalized, causing players (e.g. Windows Media Player)
+    // to display corrupt durations like 26133:22 or Infinity.
+    // This pure JS function parses and writes the exact duration directly into the MP4 atoms.
+    function patchMp4Duration(arrayBuffer, durationSec) {
+      const data = new DataView(arrayBuffer);
+      let pos = 0;
+      let movieTimescale = 1000;
+
+      while (pos + 8 <= data.byteLength) {
+        let size = data.getUint32(pos);
+        const type = String.fromCharCode(
+          data.getUint8(pos + 4),
+          data.getUint8(pos + 5),
+          data.getUint8(pos + 6),
+          data.getUint8(pos + 7)
+        );
+
+        let headerSize = 8;
+        if (size === 1) {
+          if (pos + 16 > data.byteLength) break;
+          size = Number(data.getBigUint64(pos + 8));
+          headerSize = 16;
+        } else if (size === 0) {
+          size = data.byteLength - pos;
+        }
+
+        if (type === 'moov') {
+          const moovEnd = pos + size;
+          let spos = pos + headerSize;
+
+          while (spos + 8 <= moovEnd) {
+            let ssize = data.getUint32(spos);
+            const stype = String.fromCharCode(
+              data.getUint8(spos + 4),
+              data.getUint8(spos + 5),
+              data.getUint8(spos + 6),
+              data.getUint8(spos + 7)
+            );
+            let shead = 8;
+            if (ssize === 1) {
+              ssize = Number(data.getBigUint64(spos + 8));
+              shead = 16;
+            } else if (ssize === 0) {
+              ssize = moovEnd - spos;
+            }
+
+            if (stype === 'mvhd') {
+              const v = data.getUint8(spos + shead);
+              if (v === 1) {
+                movieTimescale = data.getUint32(spos + shead + 20);
+                const durTicks = BigInt(Math.round(durationSec * movieTimescale));
+                data.setBigUint64(spos + shead + 24, durTicks);
+              } else {
+                movieTimescale = data.getUint32(spos + shead + 12);
+                const durTicks = Math.round(durationSec * movieTimescale);
+                data.setUint32(spos + shead + 16, durTicks);
+              }
+            } else if (stype === 'trak') {
+              let tpos = spos + shead;
+              const tend = spos + ssize;
+              while (tpos + 8 <= tend) {
+                let tsize = data.getUint32(tpos);
+                const tname = String.fromCharCode(
+                  data.getUint8(tpos + 4),
+                  data.getUint8(tpos + 5),
+                  data.getUint8(tpos + 6),
+                  data.getUint8(tpos + 7)
+                );
+                let thead = 8;
+                if (tsize === 1) {
+                  tsize = Number(data.getBigUint64(tpos + 8));
+                  thead = 16;
+                } else if (tsize === 0) {
+                  tsize = tend - tpos;
+                }
+
+                if (tname === 'tkhd') {
+                  const tv = data.getUint8(tpos + thead);
+                  if (tv === 1) {
+                    const durTicks = BigInt(Math.round(durationSec * movieTimescale));
+                    data.setBigUint64(tpos + thead + 28, durTicks);
+                  } else {
+                    const durTicks = Math.round(durationSec * movieTimescale);
+                    data.setUint32(tpos + thead + 20, durTicks);
+                  }
+                } else if (tname === 'mdia') {
+                  let mpos = tpos + thead;
+                  const mend = tpos + tsize;
+                  while (mpos + 8 <= mend) {
+                    let msize = data.getUint32(mpos);
+                    const mname = String.fromCharCode(
+                      data.getUint8(mpos + 4),
+                      data.getUint8(mpos + 5),
+                      data.getUint8(mpos + 6),
+                      data.getUint8(mpos + 7)
+                    );
+                    let mhead = 8;
+                    if (msize === 1) {
+                      msize = Number(data.getBigUint64(mpos + 8));
+                      mhead = 16;
+                    } else if (msize === 0) {
+                      msize = mend - mpos;
+                    }
+
+                    if (mname === 'mdhd') {
+                      const mv = data.getUint8(mpos + mhead);
+                      if (mv === 1) {
+                        const mediaTimescale = data.getUint32(mpos + mhead + 20);
+                        const durTicks = BigInt(Math.round(durationSec * mediaTimescale));
+                        data.setBigUint64(mpos + mhead + 24, durTicks);
+                      } else {
+                        const mediaTimescale = data.getUint32(mpos + mhead + 12);
+                        const durTicks = Math.round(durationSec * mediaTimescale);
+                        data.setUint32(mpos + mhead + 16, durTicks);
+                      }
+                    }
+                    mpos += msize;
+                  }
+                }
+                tpos += tsize;
+              }
+            }
+            spos += ssize;
+          }
+        }
+        pos += size;
+      }
+      return arrayBuffer;
+    }
+
     // Convert WebM Blob to MP4 Blob using client-side FFmpeg WASM
     async function convertWebmToMp4(webmBlob, onProgress) {
       if (!window.FFmpeg) {
@@ -1020,15 +1152,32 @@
         // Safety buffer: duration + 1.0s in case ended event is delayed
         const safetyTimeout = setTimeout(cleanupAndFinish, (totalSec + 1.0) * 1000);
 
+        let recordStartTime = 0;
+
         recorder.onstop = async () => {
           try {
-            let finalBlob = new Blob(chunks, { type: chosenMime || 'video/mp4' });
+            label.innerText = 'Finalizing MP4...';
+            const rawBlob = new Blob(chunks, { type: chosenMime || 'video/mp4' });
+
+            const elapsedSec = recordStartTime > 0 ? (Date.now() - recordStartTime) / 1000 : totalSec;
+            const finalDurationSec = totalSec > 0 ? Math.min(elapsedSec, totalSec) : elapsedSec;
+
+            let finalBlob = rawBlob;
 
             if (needsConversion) {
               label.innerText = 'Converting to MP4...';
-              finalBlob = await convertWebmToMp4(finalBlob, msg => {
+              finalBlob = await convertWebmToMp4(rawBlob, msg => {
                 label.innerText = msg;
               });
+            } else {
+              // Patch exact duration into MP4 atoms to fix players showing 26133:22 or Infinity
+              try {
+                const rawBuffer = await rawBlob.arrayBuffer();
+                const patchedBuffer = patchMp4Duration(rawBuffer, finalDurationSec);
+                finalBlob = new Blob([patchedBuffer], { type: 'video/mp4' });
+              } catch (patchErr) {
+                console.warn('MP4 duration patch warning:', patchErr);
+              }
             }
 
             const url = URL.createObjectURL(finalBlob);
@@ -1038,7 +1187,7 @@
             a.click();
             URL.revokeObjectURL(url);
           } catch (convErr) {
-            console.warn('MP4 export/conversion fallback:', convErr);
+            console.warn('MP4 export fallback:', convErr);
             const fallbackBlob = new Blob(chunks, { type: chosenMime || 'video/mp4' });
             const url = URL.createObjectURL(fallbackBlob);
             const a = document.createElement('a');
@@ -1056,6 +1205,7 @@
           }
         };
 
+        recordStartTime = Date.now();
         recorder.start(200);
         await bgVideo.play();
       } catch (err) {
