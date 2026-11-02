@@ -473,7 +473,7 @@
             bgVideo.play();
             isVideoBg = true;
             customBgImg = null;
-            document.getElementById('formatBadge').innerText = "VIDEO Output (.webm)";
+            document.getElementById('formatBadge').innerText = "VIDEO Output (.mp4)";
           } else {
             const reader = new FileReader();
             reader.onload = (evt) => {
@@ -603,7 +603,7 @@
       drawAxiomLogo(80, 30, 48);
 
       // ── 4. TOP-RIGHT "AXIOM Pro" BRANDING ──────────────────────────────────
-      // Real card: right edge at ~1020px, baseline at ~72px
+      // Real card: right edge at ~1020px, baseline at ~70px
       // "AXIOM" = medium sleek weight, "Pro" = light upright
       const headerVariant = document.getElementById('headerVariant').value;
       const rightEdge = W - 38;
@@ -611,27 +611,30 @@
       ctx.textBaseline = 'alphabetic';
       ctx.textAlign = 'right';
 
+      if ('letterSpacing' in ctx) ctx.letterSpacing = '-0.6px';
+
       if (headerVariant === 'AXIOMPro') {
         // Measure "Pro" first so we can right-align the combined string
-        ctx.font = '300 30px Inter, sans-serif';
+        ctx.font = '300 27px Inter, sans-serif';
         const proW = ctx.measureText('Pro').width;
-        const gap = 4;
+        const gap = 3;
 
         // Draw "AXIOM" so its right edge lands at (rightEdge - proW - gap)
-        ctx.font = '500 40px Inter, sans-serif';
+        ctx.font = '500 36px Inter, sans-serif';
         ctx.fillStyle = '#FFFFFF';
         const axiomW = ctx.measureText('AXIOM').width;
-        ctx.fillText('AXIOM', rightEdge - proW - gap, 72);
+        ctx.fillText('AXIOM', rightEdge - proW - gap, 70);
 
         // Draw "Pro" right-aligned to rightEdge
-        ctx.font = '300 30px Inter, sans-serif';
+        ctx.font = '300 27px Inter, sans-serif';
         ctx.fillStyle = '#FFFFFF';
-        ctx.fillText('Pro', rightEdge, 72);
+        ctx.fillText('Pro', rightEdge, 70);
       } else {
-        ctx.font = '500 40px Inter, sans-serif';
+        ctx.font = '500 36px Inter, sans-serif';
         ctx.fillStyle = '#FFFFFF';
-        ctx.fillText('AXIOM', rightEdge, 72);
+        ctx.fillText('AXIOM', rightEdge, 70);
       }
+      if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
       ctx.textAlign = 'left';
 
       // ── 5. TITLE & PRIMARY PNL BADGE ───────────────────────────────────────
@@ -816,10 +819,11 @@
       ctx.textBaseline = 'alphabetic';
     }
 
-    // ─── Web Audio Capture for Video Export ──────────────────────────────────
+    // ─── Web Audio Capture & MP4 Video Export ────────────────────────────────
     let audioCtx = null;
     let mediaSourceNode = null;
     let mediaDestNode = null;
+    let ffmpegInstance = null;
 
     function getAudioStreamTrack() {
       try {
@@ -842,6 +846,54 @@
         console.warn('Audio capture setup warning:', err);
       }
       return null;
+    }
+
+    // Convert WebM Blob to MP4 Blob using client-side FFmpeg WASM
+    async function convertWebmToMp4(webmBlob, onProgress) {
+      if (!window.FFmpeg) {
+        if (onProgress) onProgress('Loading MP4 converter...');
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js';
+          script.onload = resolve;
+          script.onerror = () => reject(new Error('Failed to load FFmpeg transcoding script'));
+          document.head.appendChild(script);
+        });
+      }
+
+      if (!ffmpegInstance) {
+        ffmpegInstance = FFmpeg.createFFmpeg({
+          log: false,
+          corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
+        });
+      }
+
+      if (!ffmpegInstance.isLoaded()) {
+        if (onProgress) onProgress('Initializing converter...');
+        await ffmpegInstance.load();
+      }
+
+      if (onProgress) onProgress('Converting WebM to MP4...');
+      const inputData = new Uint8Array(await webmBlob.arrayBuffer());
+      ffmpegInstance.FS('writeFile', 'input.webm', inputData);
+
+      let outData;
+      try {
+        await ffmpegInstance.run('-i', 'input.webm', '-c:v', 'copy', '-c:a', 'aac', 'output.mp4');
+        outData = ffmpegInstance.FS('readFile', 'output.mp4');
+      } catch (copyErr) {
+        // Fallback: fast re-encode to h.264 if direct stream copy is rejected
+        if (onProgress) onProgress('Re-encoding to MP4...');
+        await ffmpegInstance.run('-i', 'input.webm', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', 'output.mp4');
+        outData = ffmpegInstance.FS('readFile', 'output.mp4');
+      }
+
+      try {
+        ffmpegInstance.FS('unlink', 'input.webm');
+        ffmpegInstance.FS('unlink', 'output.mp4');
+      } catch (cleanupErr) {}
+
+      return new Blob([outData.buffer], { type: 'video/mp4' });
     }
 
     // ─── EXPORT ───────────────────────────────────────────────────────────────
@@ -887,8 +939,7 @@
           setTimeout(resolve, 350); // fallback timeout
         });
 
-        // 3. Unmute video for Web Audio capture (won't play to speakers because
-        //    mediaSourceNode is only connected to mediaDestNode)
+        // 3. Unmute video for Web Audio capture
         bgVideo.muted = false;
         bgVideo.volume = 1.0;
 
@@ -900,17 +951,35 @@
           combinedTracks.push(audioTrack);
         }
 
-        // 5. Select supported MIME type
-        const mimeTypes = [
-          'video/webm;codecs=vp9,opus',
-          'video/webm;codecs=vp8,opus',
-          'video/webm'
+        // 5. Check for native MP4 container recording support
+        const preferredMp4Types = [
+          'video/mp4;codecs=avc1,mp4a.40.2',
+          'video/mp4;codecs=avc1',
+          'video/mp4'
         ];
         let chosenMime = '';
-        for (const m of mimeTypes) {
-          if (MediaRecorder.isTypeSupported(m)) {
-            chosenMime = m;
+        let needsConversion = false;
+
+        for (const t of preferredMp4Types) {
+          if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) {
+            chosenMime = t;
             break;
+          }
+        }
+
+        // If browser does not natively record MP4 (e.g. Firefox), record WebM then auto-convert
+        if (!chosenMime) {
+          const webmTypes = [
+            'video/webm;codecs=vp9,opus',
+            'video/webm;codecs=vp8,opus',
+            'video/webm'
+          ];
+          for (const m of webmTypes) {
+            if (MediaRecorder.isTypeSupported(m)) {
+              chosenMime = m;
+              needsConversion = true;
+              break;
+            }
           }
         }
 
@@ -951,21 +1020,40 @@
         // Safety buffer: duration + 1.0s in case ended event is delayed
         const safetyTimeout = setTimeout(cleanupAndFinish, (totalSec + 1.0) * 1000);
 
-        recorder.onstop = () => {
-          const blob = new Blob(chunks, { type: chosenMime || 'video/webm' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `axiom-pnl-video-${Date.now()}.webm`;
-          a.click();
-          URL.revokeObjectURL(url);
+        recorder.onstop = async () => {
+          try {
+            let finalBlob = new Blob(chunks, { type: chosenMime || 'video/mp4' });
 
-          // Restore normal muted looping preview
-          bgVideo.muted = true;
-          bgVideo.loop = true;
-          bgVideo.play();
-          label.innerText = 'Download Card';
-          btn.disabled = false;
+            if (needsConversion) {
+              label.innerText = 'Converting to MP4...';
+              finalBlob = await convertWebmToMp4(finalBlob, msg => {
+                label.innerText = msg;
+              });
+            }
+
+            const url = URL.createObjectURL(finalBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `axiom-pnl-video-${Date.now()}.mp4`;
+            a.click();
+            URL.revokeObjectURL(url);
+          } catch (convErr) {
+            console.warn('MP4 export/conversion fallback:', convErr);
+            const fallbackBlob = new Blob(chunks, { type: chosenMime || 'video/mp4' });
+            const url = URL.createObjectURL(fallbackBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `axiom-pnl-video-${Date.now()}.mp4`;
+            a.click();
+            URL.revokeObjectURL(url);
+          } finally {
+            // Restore normal muted looping preview
+            bgVideo.muted = true;
+            bgVideo.loop = true;
+            bgVideo.play();
+            label.innerText = 'Download Card';
+            btn.disabled = false;
+          }
         };
 
         recorder.start(200);
