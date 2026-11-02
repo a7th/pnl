@@ -47,8 +47,8 @@
         <div class="w-7 h-7 flex items-center justify-center bg-black rounded border border-slate-800 p-1">
           <!-- Axiom Logo SVG (triangle on top, trapezoid wider at bottom) -->
           <svg viewBox="0 0 56 56" class="w-full h-full" fill="none">
-            <polygon points="28,2 48,30 8,30" fill="#FFFFFF"/>
-            <polygon points="4,38 52,38 46,54 10,54" fill="#FFFFFF"/>
+            <polygon points="28,2 39,27 17,27" fill="#FFFFFF"/>
+            <polygon points="15,32 41,32 50,52 6,52" fill="#FFFFFF"/>
           </svg>
         </div>
         <span class="font-bold text-sm tracking-tight text-white">AXIOM <span class="font-normal text-slate-400">PnL Generator</span></span>
@@ -207,9 +207,9 @@
             </button>
           </div>
           <div>
-            <label class="block text-xs font-medium text-slate-300 mb-1">Avatar Tag Badge</label>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Avatar Border</label>
             <select id="avatarTagSelect" class="w-full bg-black border border-axiom-border rounded px-2.5 py-1.5 text-xs text-white">
-              <option value="axiom">Axiom Logo (Default)</option>
+              <option value="axiom">Enabled (Default)</option>
               <option value="none">None</option>
             </select>
           </div>
@@ -522,36 +522,36 @@
       });
     }
 
-    // ─── Draw Axiom Logo (triangle on top, trapezoid wider at bottom) ─────────
-    // Scale: draws into a bounding box at (x, y) with given size
+    // ─── Draw Axiom Logo (triangle with horizontal slit, unified triangular silhouette) ──
+    // x, y = apex position; size = total height of the logo
     function drawAxiomLogo(x, y, size) {
-      // size ≈ the total height of the logo
-      // Triangle: apex at top-center, base at ~42% height
-      const triH = size * 0.42;
-      const triHalfW = size * 0.30;
-      const gap = size * 0.10;
-      // Trapezoid: sits below the gap, bottom is wider than top
-      const trapTop = triH + gap;
-      const trapH = size * 0.30;
-      const trapTopHalfW = size * 0.24;
-      const trapBotHalfW = size * 0.36;
+      const totalH = size;
+      const baseHalfW = size * 0.40; // half-width at the very bottom
+
+      // Both sections follow the same triangular slope:
+      // at height h from apex, halfWidth = baseHalfW * (h / totalH)
+      const gapTop = totalH * 0.50;   // where the gap starts
+      const gapBot = totalH * 0.62;   // where the gap ends
+
+      const wGapTop = baseHalfW * (gapTop / totalH);
+      const wGapBot = baseHalfW * (gapBot / totalH);
 
       ctx.fillStyle = '#FFFFFF';
 
-      // Top triangle (pointing up)
+      // Top triangle section (apex to gap)
       ctx.beginPath();
-      ctx.moveTo(x, y);                         // apex
-      ctx.lineTo(x - triHalfW, y + triH);       // bottom-left
-      ctx.lineTo(x + triHalfW, y + triH);       // bottom-right
+      ctx.moveTo(x, y);                            // apex
+      ctx.lineTo(x + wGapTop, y + gapTop);         // bottom-right
+      ctx.lineTo(x - wGapTop, y + gapTop);         // bottom-left
       ctx.closePath();
       ctx.fill();
 
-      // Bottom trapezoid (wider at bottom)
+      // Bottom trapezoid section (gap to base, same slope)
       ctx.beginPath();
-      ctx.moveTo(x - trapTopHalfW, y + trapTop);              // top-left
-      ctx.lineTo(x + trapTopHalfW, y + trapTop);              // top-right
-      ctx.lineTo(x + trapBotHalfW, y + trapTop + trapH);      // bottom-right
-      ctx.lineTo(x - trapBotHalfW, y + trapTop + trapH);      // bottom-left
+      ctx.moveTo(x - wGapBot, y + gapBot);         // top-left
+      ctx.lineTo(x + wGapBot, y + gapBot);         // top-right
+      ctx.lineTo(x + baseHalfW, y + totalH);       // bottom-right
+      ctx.lineTo(x - baseHalfW, y + totalH);       // bottom-left
       ctx.closePath();
       ctx.fill();
     }
@@ -613,22 +613,22 @@
 
       if (headerVariant === 'AXIOMPro') {
         // Measure "Pro" first so we can right-align the combined string
-        ctx.font = '300 italic 36px Inter, sans-serif';
+        ctx.font = '300 36px Inter, sans-serif';
         const proW = ctx.measureText('Pro').width;
         const gap = 4;
 
         // Draw "AXIOM" so its right edge lands at (rightEdge - proW - gap)
-        ctx.font = '700 48px Inter, sans-serif';
+        ctx.font = '600 48px Inter, sans-serif';
         ctx.fillStyle = '#FFFFFF';
         const axiomW = ctx.measureText('AXIOM').width;
         ctx.fillText('AXIOM', rightEdge - proW - gap, 76);
 
         // Draw "Pro" right-aligned to rightEdge
-        ctx.font = '300 italic 36px Inter, sans-serif';
+        ctx.font = '300 36px Inter, sans-serif';
         ctx.fillStyle = '#FFFFFF';
         ctx.fillText('Pro', rightEdge, 76);
       } else {
-        ctx.font = '700 48px Inter, sans-serif';
+        ctx.font = '600 48px Inter, sans-serif';
         ctx.fillStyle = '#FFFFFF';
         ctx.fillText('AXIOM', rightEdge, 76);
       }
@@ -706,8 +706,8 @@
       const labelRow2 = document.getElementById('labelRow2').value;
       const labelRow3 = document.getElementById('labelRow3').value;
 
-      ctx.font = '400 34px Inter, sans-serif';
-      ctx.fillStyle = '#E2E8F0';
+      ctx.font = '600 34px Inter, sans-serif';
+      ctx.fillStyle = '#FFFFFF';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText('PNL', leftX, gridY);
       ctx.fillText(labelRow2, leftX, gridY + rowH);
@@ -759,28 +759,18 @@
         ctx.drawImage(avatarImg, avX, avY, avSize, avSize);
         ctx.restore();
 
-        // Avatar tag badge: small Axiom logo (white triangle + trapezoid) on dark chip
+        // Avatar border (subtle rounded-rect stroke around avatar)
         if (document.getElementById('avatarTagSelect').value === 'axiom') {
-          const chipSize = 18;
-          const chipX = avX - chipSize * 0.4;
-          const chipY = avY - chipSize * 0.4;
-
-          // Dark rounded chip background
-          ctx.save();
-          ctx.fillStyle = 'rgba(8, 9, 12, 0.85)';
-          const cr = 4;
+          ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+          ctx.lineWidth = 2.5;
           ctx.beginPath();
-          ctx.moveTo(chipX + cr, chipY);
-          ctx.arcTo(chipX + chipSize, chipY, chipX + chipSize, chipY + chipSize, cr);
-          ctx.arcTo(chipX + chipSize, chipY + chipSize, chipX, chipY + chipSize, cr);
-          ctx.arcTo(chipX, chipY + chipSize, chipX, chipY, cr);
-          ctx.arcTo(chipX, chipY, chipX + chipSize, chipY, cr);
+          ctx.moveTo(avX + avR, avY);
+          ctx.arcTo(avX + avSize, avY, avX + avSize, avY + avSize, avR);
+          ctx.arcTo(avX + avSize, avY + avSize, avX, avY + avSize, avR);
+          ctx.arcTo(avX, avY + avSize, avX, avY, avR);
+          ctx.arcTo(avX, avY, avX + avSize, avY, avR);
           ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-
-          // Mini Axiom logo centered in chip
-          drawAxiomLogo(chipX + chipSize / 2, chipY + chipSize * 0.12, chipSize * 0.80);
+          ctx.stroke();
         }
       }
 
@@ -788,7 +778,7 @@
       const usernameX = avX + avSize + 16;
       const usernameCY = avY + avSize / 2;
       const username = document.getElementById('userHandle').value || '@user';
-      ctx.font = '700 38px Inter, sans-serif';
+      ctx.font = '500 38px Inter, sans-serif';
       ctx.fillStyle = '#FFFFFF';
       ctx.textBaseline = 'middle';
       ctx.fillText(username, usernameX, usernameCY);
